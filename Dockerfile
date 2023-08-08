@@ -1,59 +1,25 @@
-FROM buildpack-deps:bullseye
+# Use a imagem base Python
+FROM python:3.11-slim
 
-LABEL maintainer="Sebastian Ramirez <tiangolo@gmail.com>"
+# Instala o FFmpeg
+RUN apt-get update && apt-get install -y ffmpeg
 
-# Versions of Nginx and nginx-rtmp-module to use
-ENV NGINX_VERSION nginx-1.23.2
-ENV NGINX_RTMP_MODULE_VERSION 1.2.2
+# Define o diretório de trabalho dentro do contêiner
+WORKDIR /app
 
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y ca-certificates openssl libssl-dev ffmpeg libsm6 libxext6  -y && \
-    rm -rf /var/lib/apt/lists/*
+# Copia o arquivo de requisitos para o diretório de trabalho
+COPY requirements.txt .
 
-# Download and decompress Nginx
-RUN mkdir -p /tmp/build/nginx && \
-    cd /tmp/build/nginx && \
-    wget -O ${NGINX_VERSION}.tar.gz https://nginx.org/download/${NGINX_VERSION}.tar.gz && \
-    tar -zxf ${NGINX_VERSION}.tar.gz
+RUN pip install Flask 
 
-# Download and decompress RTMP module
-RUN mkdir -p /tmp/build/nginx-rtmp-module && \
-    cd /tmp/build/nginx-rtmp-module && \
-    wget -O nginx-rtmp-module-${NGINX_RTMP_MODULE_VERSION}.tar.gz https://github.com/arut/nginx-rtmp-module/archive/v${NGINX_RTMP_MODULE_VERSION}.tar.gz && \
-    tar -zxf nginx-rtmp-module-${NGINX_RTMP_MODULE_VERSION}.tar.gz && \
-    cd nginx-rtmp-module-${NGINX_RTMP_MODULE_VERSION}
+# Instala as dependências do aplicativo
+#RUN pip install --no-cache-dir -r requirements.txt
 
-# Build and install Nginx
-# The default puts everything under /usr/local/nginx, so it's needed to change
-# it explicitly. Not just for order but to have it in the PATH
-RUN cd /tmp/build/nginx/${NGINX_VERSION} && \
-    ./configure \
-        --sbin-path=/usr/local/sbin/nginx \
-        --conf-path=/etc/nginx/nginx.conf \
-        --error-log-path=/var/log/nginx/error.log \
-        --pid-path=/var/run/nginx/nginx.pid \
-        --lock-path=/var/lock/nginx/nginx.lock \
-        --http-log-path=/var/log/nginx/access.log \
-        --http-client-body-temp-path=/tmp/nginx-client-body \
-        --with-http_ssl_module \
-        --with-threads \
-        --with-ipv6 \
-        --add-module=/tmp/build/nginx-rtmp-module/nginx-rtmp-module-${NGINX_RTMP_MODULE_VERSION} --with-debug && \
-    make -j $(getconf _NPROCESSORS_ONLN) && \
-    make install && \
-    mkdir /var/lock/nginx && \
-    rm -rf /tmp/build
+# Copia o restante dos arquivos para o diretório de trabalho
+COPY . .
 
-# Forward logs to Docker
-RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
-    ln -sf /dev/stderr /var/log/nginx/error.log
+# Expõe a porta 9090
+EXPOSE 9090
 
-# Set up config file
-COPY hls /etc/nginx/html/hls
-COPY static /etc/nginx/html/static
-COPY nginx.conf /etc/nginx/nginx.conf
-
-
-EXPOSE 1935, 9090
-CMD ["nginx", "-g", "daemon off;"]
+# Comando para iniciar o aplicativo quando o contêiner for executado
+CMD ["python", "app.py"]
